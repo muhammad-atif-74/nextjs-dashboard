@@ -5,7 +5,7 @@ import postgres from 'postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require' });
+const sql = postgres("postgres://neondb_owner:npg_6GcrsDAPBvn3@ep-sweet-heart-ad2tjr70-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require", { ssl: 'require' });
 
 const FormSchema = z.object({
     id: z.string(),
