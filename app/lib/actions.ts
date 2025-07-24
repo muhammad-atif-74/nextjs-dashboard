@@ -5,33 +5,61 @@ import postgres from 'postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-const sql = postgres("postgres://neondb_owner:npg_6GcrsDAPBvn3@ep-sweet-heart-ad2tjr70-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require", { ssl: 'require' });
+const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require' });
 
 const FormSchema = z.object({
     id: z.string(),
-    customerId: z.string(),
-    amount: z.coerce.number(),
-    status: z.enum(['pending', 'paid', 'overdue']),
+    customerId: z.string({
+        invalid_type_error: 'Please select a customer',
+    }),
+    amount: z.coerce.number().gt(0, { message: 'Amount must be greater than $0' }),
+    status: z.enum(['pending', 'paid', 'overdue'], {
+        message: "Please select an invoice status.",
+    }),
     date: z.string()
 })
+
+export type State = {
+    errors?: {
+        customerId?: string[];
+        amount?: string[];
+        status?: string[];
+    };
+    message?: string | null;
+}
 
 const CreateInvoice = FormSchema.omit({ id: true, date: true })
 
 
-export async function createInvoice(formData: FormData) {
-    const { customerId, amount, status } = CreateInvoice.parse({
+export async function createInvoice(prevState: State, formData: FormData) {
+    const validatedFields  = CreateInvoice.safeParse({
         customerId: formData.get('customerId'),
         amount: formData.get('amount'),
         status: formData.get('status'),
     })
+
+    if(!validatedFields.success){
+        return {
+            errors: validatedFields.error.flatten().fieldErrors,
+            message: 'Missing Fields. Failed to Create Invoice.'   
+        }
+    }
+
+    const {customerId, amount, status} = validatedFields.data;
     const amountInCents = amount * 100;
     const date = new Date().toISOString().split('T')[0];
 
-    await sql`
-    Insert into invoices (customer_id, amount, status, date) VALUES 
-    (${customerId}, ${amountInCents}, ${status}, ${date})
-    `;
+    try {
+        await sql`
+        Insert into invoices (customer_id, amount, status, date) VALUES 
+        (${customerId}, ${amountInCents}, ${status}, ${date})
+        `;
 
+    }
+    catch (error) {
+        console.error('Error creating invoice:', error);
+        throw new Error('Failed to create invoice');
+    }
     revalidatePath('/dashboard/invoices');
     redirect('/dashboard/invoices');
 
@@ -40,15 +68,16 @@ export async function createInvoice(formData: FormData) {
 const UpdateInvoice = FormSchema.omit({ id: true, date: true })
 
 export async function updateInvoice(id: string, formData: FormData) {
-    const {customerId, amount, status} = UpdateInvoice.parse({
+    const { customerId, amount, status } = UpdateInvoice.parse({
         customerId: formData.get('customerId'),
         amount: formData.get('amount'),
         status: formData.get('status'),
     })
 
-    const amountInCents = amount * 100; 
-    
-    await sql`
+    const amountInCents = amount * 100;
+    try {
+
+        await sql`
     Update invoices set 
     customer_id = ${customerId},
     amount = ${amountInCents},
@@ -56,11 +85,17 @@ export async function updateInvoice(id: string, formData: FormData) {
     where id = ${id}
     `;
 
+    }
+    catch (error) {
+        console.error('Error updating invoice:', error);
+        throw new Error('Failed to update invoice');
+    }
     revalidatePath('/dashboard/invoices');
     redirect('/dashboard/invoices');
 }
 
-export async function deleteInvoice(id: string){
+export async function deleteInvoice(id: string) {
+    throw new Error('Failed to Delete Invoice');
     await sql`
     Delete from invoices where id=${id}`;
     revalidatePath('/dashboard/invoices');
