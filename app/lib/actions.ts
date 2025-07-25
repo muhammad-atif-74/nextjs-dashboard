@@ -4,6 +4,8 @@ import { z } from 'zod'
 import postgres from 'postgres';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { signIn } from '@/auth';
+import { AuthError } from 'next-auth';
 
 const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require' });
 
@@ -81,7 +83,7 @@ export async function updateInvoice(id: string, formData: FormData) {
         }
     }
 
-    const {customerId, amount, status} = validatedFields.data;
+    const { customerId, amount, status } = validatedFields.data;
     const amountInCents = amount * 100;
     try {
 
@@ -103,8 +105,34 @@ export async function updateInvoice(id: string, formData: FormData) {
 }
 
 export async function deleteInvoice(id: string) {
-    throw new Error('Failed to Delete Invoice');
     await sql`
     Delete from invoices where id=${id}`;
     revalidatePath('/dashboard/invoices');
+}
+
+
+export async function authenticate(prevState: string | undefined, formData: FormData) {
+    console.log('Authenticating user...');
+    try {
+        const redirectTo = formData.get('redirectTo') as string || '/dashboard';
+        
+        await signIn('credentials', {
+            email: formData.get('email'),
+            password: formData.get('password'),
+            redirectTo: redirectTo,
+        });
+        
+        console.log('User authenticated successfully');
+        
+    } catch (error) {
+        if (error instanceof AuthError) {
+            switch (error.type) {
+                case 'CredentialsSignin':
+                    return 'Invalid credentials. Please try again.';
+                default:
+                    return 'An unexpected error occurred. Please try again later.';
+            }
+        }
+        throw error;
+    }
 }
